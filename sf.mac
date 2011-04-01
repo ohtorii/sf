@@ -1,0 +1,97 @@
+/*検索にマッチしない行を折りたたむ秀丸エディタのマクロ
+
+＊動作
+    ・選択文字を検索します、選択がなければ単語選択してから検索します。
+    ・ファイル全体を対象にします。
+    ・ファイル先頭行と最終行の一行折りたたみできません。（VisualStudioと同じ動作です。）
+
+＊動作確認した環境
+    秀丸 v8.03
+
+@authour    ohtorii
+http://d.hatena.ne.jp/ohtorii/
+http://d.hatena.ne.jp/ohtorii/20110314/1300143006
+*/
+$old_searchbuffer = searchbuffer;
+#old_searchoption = searchoption;
+
+//折りたたみを維持,部分編集を維持,範囲選択,最後に移動
+//マクロ終了時に元に戻る。
+setcompatiblemode 0x0003|0x000c|0x0200|0x2000;
+
+disabledraw;
+call Main;
+enabledraw;
+setsearch $old_searchbuffer, #old_searchoption;
+endmacro;
+
+Main:
+	##old_column = column;
+	##old_lineno=lineno;
+	if(rectselecting){
+		message("矩形選択は未対応です");
+		return false;
+	}
+	if(! selecting){
+		selectword;
+	}
+	$$str = gettext2(seltopcolumn,seltoplineno,selendcolumn,selendlineno);
+	if(! strlen($$str)){
+		//検索文字列なし
+		return false;
+	}
+	gofiletop;
+	call Search $$str;
+	##hold_cnt = ##return;
+	if(0<##hold_cnt){
+		gofiletop;
+	}else{
+		movetolineno 1+##old_column,##old_lineno;
+	}
+	return true;
+
+Search:
+	$$str 			= $$1;
+	##prev_lineno	= 0;
+	##hold_cnt 		= 0;
+
+	while(folded){
+		down;
+		if(! result){
+			return ##hold_cnt;
+		}
+	}
+	searchdown $$str,word;
+	while(result){
+		if(0==folded){
+			//折りたたまれていない
+			##old_lineno = lineno;
+			if(lineno == ##prev_lineno){
+				//pass
+			}else{
+				call FoldRange 0, ##prev_lineno, 0, lineno;
+				##hold_cnt = ##hold_cnt + 1;
+			}
+			//次行の先頭に移動
+			movetolineno 0, 1+##old_lineno;
+			##prev_lineno = lineno;
+		}
+		finddown2;
+	}
+
+	if(##hold_cnt){
+		//行末までを折りたたむ
+		gofileend;
+		call FoldRange 0, ##prev_lineno, 0, lineno;
+		##hold_cnt=##hold_cnt+1;
+	}
+	return ##hold_cnt;
+
+FoldRange:
+	escape;
+	movetolineno 1+##1, ##2;
+	beginsel;
+	movetolineno 1+##3, ##4;
+	endsel;
+	fold 0x0001;
+	return ;
